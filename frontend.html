@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Pharmacy Inventory — Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin:auto; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px;}
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+    input, button, select { padding:6px; margin:4px; }
+    .small { width: 100px; }
+  </style>
+</head>
+<body>
+  <h2>Pharmacy Inventory (Demo)</h2>
+
+  <section id="add">
+    <h3>Add Medicine</h3>
+    <input id="sku" placeholder="SKU">
+    <input id="name" placeholder="Name">
+    <input id="manufacturer" placeholder="Manufacturer">
+    <input id="price" placeholder="Unit Price" type="number" step="0.01">
+    <input id="qty" placeholder="Quantity" type="number">
+    <input id="expiry" placeholder="Expiry (YYYY-MM-DD)" type="date">
+    <button id="btnAdd">Add</button>
+  </section>
+
+  <section id="list">
+    <h3>Inventory</h3>
+    <table id="tbl">
+      <thead><tr>
+        <th>ID</th><th>SKU</th><th>Name</th><th>Manufacturer</th><th>Price</th><th>Qty</th><th>Expiry</th><th>Actions</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <template id="row-tpl">
+    <tr>
+      <td class="id"></td>
+      <td class="sku"></td>
+      <td class="name"></td>
+      <td class="manu"></td>
+      <td class="price"></td>
+      <td class="qty"></td>
+      <td class="exp"></td>
+      <td class="actions"></td>
+    </tr>
+  </template>
+
+<script>
+const API = 'http://localhost:3000';
+
+async function fetchMedicines(){
+  const res = await fetch(API + '/medicines');
+  const data = await res.json();
+  const tbody = document.querySelector('#tbl tbody');
+  tbody.innerHTML = '';
+  data.forEach(m => {
+    const tr = document.importNode(document.querySelector('#row-tpl').content, true);
+    tr.querySelector('.id').textContent = m.MedicineID;
+    tr.querySelector('.sku').textContent = m.SKU;
+    tr.querySelector('.name').textContent = m.Name;
+    tr.querySelector('.manu').textContent = m.Manufacturer || '';
+    tr.querySelector('.price').textContent = parseFloat(m.UnitPrice).toFixed(2);
+    tr.querySelector('.qty').textContent = m.QuantityOnHand;
+    tr.querySelector('.exp').textContent = m.ExpiryDate ? new Date(m.ExpiryDate).toLocaleDateString() : '';
+    const actions = tr.querySelector('.actions');
+
+    const btnEdit = document.createElement('button');
+    btnEdit.textContent = 'Edit';
+    btnEdit.onclick = () => editMedicine(m);
+    actions.appendChild(btnEdit);
+
+    const btnDel = document.createElement('button');
+    btnDel.textContent = 'Delete';
+    btnDel.onclick = () => deleteMedicine(m.MedicineID);
+    actions.appendChild(btnDel);
+
+    const btnAddStock = document.createElement('button');
+    btnAddStock.textContent = '+Stock';
+    btnAddStock.onclick = () => adjustStock(m.MedicineID, 1);
+    actions.appendChild(btnAddStock);
+
+    const btnReduceStock = document.createElement('button');
+    btnReduceStock.textContent = '-Stock';
+    btnReduceStock.onclick = () => adjustStock(m.MedicineID, -1);
+    actions.appendChild(btnReduceStock);
+
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('btnAdd').addEventListener('click', async () => {
+  const payload = {
+    SKU: document.getElementById('sku').value.trim(),
+    Name: document.getElementById('name').value.trim(),
+    Manufacturer: document.getElementById('manufacturer').value.trim(),
+    UnitPrice: parseFloat(document.getElementById('price').value) || 0,
+    QuantityOnHand: parseInt(document.getElementById('qty').value) || 0,
+    ExpiryDate: document.getElementById('expiry').value || null
+  };
+  const res = await fetch(API + '/medicines', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if (res.ok) {
+    alert('Added');
+    fetchMedicines();
+  } else {
+    const err = await res.json();
+    alert('Error: ' + (err.error || JSON.stringify(err)));
+  }
+});
+
+async function editMedicine(m){
+  const newName = prompt('Edit name', m.Name);
+  if (newName === null) return;
+  const newPrice = prompt('Unit price', m.UnitPrice);
+  const body = { Name: newName, UnitPrice: parseFloat(newPrice) || m.UnitPrice };
+  const res = await fetch(API + '/medicines/' + m.MedicineID, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (res.ok) {
+    fetchMedicines();
+  } else {
+    alert('Update failed');
+  }
+}
+
+async function deleteMedicine(id){
+  if (!confirm('Delete medicine id ' + id + '?')) return;
+  const res = await fetch(API + '/medicines/' + id, { method: 'DELETE' });
+  if (res.ok) fetchMedicines(); else alert('Delete failed');
+}
+
+async function adjustStock(id, delta){
+  const reason = prompt('Reason for change?');
+  const changedBy = prompt('Your name?');
+  const res = await fetch(API + '/medicines/' + id + '/adjust', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ changeAmount: delta, reason, changedBy })
+  });
+  const data = await res.json();
+  if (res.ok) {
+    fetchMedicines();
+  } else {
+    alert('Adjust failed: ' + (data.error || JSON.stringify(data)));
+  }
+}
+
+fetchMedicines();
+</script>
+</body>
+</html>
